@@ -91,24 +91,62 @@ class MainWindow(QtWidgets.QMainWindow):
     def update_ui(self):
         # Firmware
         mwc_attrs = self.iio_ctx.find_device("mwc").attrs
-        val = mwc_attrs.get("tx_autotuning").value
-        self.ui.chk_tx_autotuning.setChecked(False if val == "0" else True)
-        val = mwc_attrs.get("rx_autotuning").value
-        self.ui.chk_rx_autotuning.setChecked(False if val == "0" else True)
-        val = mwc_attrs.get("tx_auto_ifvga").value
-        self.ui.chk_tx_auto_ifvga.setChecked(False if val == "0" else True)
-        val = mwc_attrs.get("rx_auto_ifvga_rflna").value
-        self.ui.chk_rx_auto_ifvga_rflna.setChecked(False if val == "0" else True)
-        val = mwc_attrs.get("tx_target").value
-        self.ui.sb_tx_target.setValue(int(val))
-        val = mwc_attrs.get("rx_target").value
-        self.ui.sb_rx_target.setValue(int(val))
+
+        checked = False if mwc_attrs.get("tx_autotuning").value == "0" else True
+        self.ui.chk_tx_autotuning.blockSignals(True)
+        self.ui.chk_tx_autotuning.setChecked(checked)
+        self.ui.chk_tx_autotuning.blockSignals(False)
+        self.ui.cb_tx_rfvga.setEnabled(not checked)
+
+        checked = False if mwc_attrs.get("rx_autotuning").value == "0" else True
+        self.ui.chk_rx_autotuning.blockSignals(True)
+        self.ui.chk_rx_autotuning.setChecked(checked)
+        self.ui.chk_rx_autotuning.blockSignals(False)
+        self.ui.cb_rx_bbcoarse1.setEnabled(not checked)
+        self.ui.cb_rx_bbcoarse2.setEnabled(not checked)
+        self.ui.cb_rx_bbfine.setEnabled(not checked)
+
+        checked = False if mwc_attrs.get("tx_auto_ifvga").value == "0" else True
+        self.ui.chk_tx_auto_ifvga.blockSignals(True)
+        self.ui.chk_tx_auto_ifvga.setChecked(checked)
+        self.ui.chk_tx_auto_ifvga.blockSignals(False)
+        self.ui.cb_tx_ifvga.setEnabled(not checked)
+
+        checked = False if mwc_attrs.get("rx_auto_ifvga_rflna").value == "0" else True
+        self.ui.chk_rx_auto_ifvga_rflna.blockSignals(True)
+        self.ui.chk_rx_auto_ifvga_rflna.setChecked(checked)
+        self.ui.chk_rx_auto_ifvga_rflna.blockSignals(False)
+        self.ui.cb_rx_ifvga.setEnabled(not checked)
+        self.ui.cb_rx_rflna.setEnabled(not checked)
+
+        tx_target = int(mwc_attrs.get("tx_target").value)
+        self.ui.sb_tx_target.blockSignals(True)
+        self.ui.sb_tx_target.setValue(tx_target)
+        self.ui.sb_tx_target.blockSignals(False)
+        rx_target = int(mwc_attrs.get("rx_target").value)
+        self.ui.sb_rx_target.blockSignals(True)
+        self.ui.sb_rx_target.setValue(rx_target)
+        self.ui.sb_rx_target.blockSignals(False)
         raw = self.iio_ctx.find_device("mwc").find_channel("tx_det").attrs.get("raw").value
         scale = self.iio_ctx.find_device("mwc").find_channel("tx_det").attrs.get("scale").value
-        self.ui.lbl_tx_det_dyn.setText(str(int(float(raw) * float(scale))) + " mV")
+        tx_det_out = int(float(raw) * float(scale))
+        self.ui.lbl_tx_det_dyn.setText(str(tx_det_out) + " mV")
         raw = self.iio_ctx.find_device("mwc").find_channel("rx_det").attrs.get("raw").value
         scale = self.iio_ctx.find_device("mwc").find_channel("rx_det").attrs.get("scale").value
-        self.ui.lbl_rx_det_dyn.setText(str(int(float(raw) * float(scale))) + " mV")
+        rx_det_out = int(float(raw) * float(scale))
+        self.ui.lbl_rx_det_dyn.setText(str(rx_det_out) + " mV")
+        tx_diff = tx_det_out - tx_target
+        self.ui.lbl_tx_autotuning.setText("{0:+d} mV".format(tx_diff))
+        if abs(tx_diff) > self.ui.sb_tx_tolerance.value():
+            self.ui.lbl_tx_autotuning.setStyleSheet("font-weight: bold")
+        else:
+            self.ui.lbl_tx_autotuning.setStyleSheet("font-weight: normal")
+        rx_diff = rx_det_out - rx_target
+        self.ui.lbl_rx_autotuning.setText("{0:+d} mV".format(rx_diff))
+        if abs(rx_diff) > self.ui.sb_rx_tolerance.value():
+            self.ui.lbl_rx_autotuning.setStyleSheet("font-weight: bold")
+        else:
+            self.ui.lbl_rx_autotuning.setStyleSheet("font-weight: normal")
 
         # Tx
         tx_attrs = self.iio_ctx.find_device("hmc6300").attrs
@@ -171,7 +209,6 @@ class MainWindow(QtWidgets.QMainWindow):
                 int(self.ui.cb_rx_bbcoarse1.currentText().split()[0]) + \
                 int(self.ui.cb_rx_bbcoarse2.currentText().split()[0]) + \
                 int(self.ui.cb_rx_bbfine.currentText().split()[0])
-
         self.ui.lbl_rx_gain_dyn.setText("{:.1f} dB".format(gain))
 
     def init_ui(self):

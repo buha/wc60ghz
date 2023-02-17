@@ -51,7 +51,7 @@
        </size>
       </property>
       <property name="currentIndex">
-       <number>0</number>
+       <number>1</number>
       </property>
       <widget class="QWidget" name="context_tab">
        <attribute name="title">
@@ -523,9 +523,9 @@
                         </widget>
                        </item>
                        <item>
-                        <widget class="QLabel" name="label_2">
+                        <widget class="QLabel" name="lbl_tx_autotuning">
                          <property name="text">
-                          <string>-12 mV</string>
+                          <string/>
                          </property>
                          <property name="alignment">
                           <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
@@ -571,7 +571,7 @@
                         </widget>
                        </item>
                        <item>
-                        <widget class="QSpinBox" name="tx_tolerance">
+                        <widget class="QSpinBox" name="sb_tx_tolerance">
                          <property name="toolTip">
                           <string>TX_DET_OUT target voltage for the autotuning algorithm.</string>
                          </property>
@@ -1340,9 +1340,9 @@
                         </widget>
                        </item>
                        <item>
-                        <widget class="QLabel" name="label_3">
+                        <widget class="QLabel" name="lbl_rx_autotuning">
                          <property name="text">
-                          <string>+50 mV (red)</string>
+                          <string/>
                          </property>
                          <property name="alignment">
                           <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
@@ -1382,7 +1382,7 @@
                         </widget>
                        </item>
                        <item>
-                        <widget class="QSpinBox" name="rx_tolerance">
+                        <widget class="QSpinBox" name="sb_rx_tolerance">
                          <property name="toolTip">
                           <string>TX_DET_OUT target voltage for the autotuning algorithm.</string>
                          </property>
