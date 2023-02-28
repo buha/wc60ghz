@@ -637,7 +637,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     continue
                 reg_value = self.iio_ctx.find_device("hmc6300").reg_read(i)
                 outfile.write("\"" + str(i) + "\",")
-                outfile.write("\"" + str(int(reg_value)) + "\"\n")
+                outfile.write("\"" + str(reg_value) + "\"\n")
 
     def rx_save_regs(self):
         fileName, type = QtWidgets.QFileDialog.getSaveFileName(self, "Save RX registers content", "rx_regs_content.txt", "Text files (*.txt)")
@@ -650,4 +650,4 @@ class MainWindow(QtWidgets.QMainWindow):
                     continue
                 reg_value = self.iio_ctx.find_device("hmc6301").reg_read(i)
                 outfile.write("\"" + str(i) + "\",")
-                outfile.write("\"" + str(int(reg_value, base = 16)) + "\"\n")
+                outfile.write("\"" + str(reg_value) + "\"\n")
