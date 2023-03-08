@@ -86,7 +86,8 @@ class Controller:
     def get_desc(self) -> str:
         return self.__iio_ctx.description
 
-    def make_ctx_string(self, text: str) -> str:
+    @staticmethod
+    def make_ctx_string(text: str) -> str:
         if sys.platform.startswith("linux"):
             text = "/dev/" + text
 
