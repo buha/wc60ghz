@@ -131,25 +131,29 @@ class MainWindow(QtWidgets.QMainWindow):
         # tx_autotuning
         checked = mwc_attrs.get("tx_autotuning").value != "0"
         self.ui.chk_tx_autotuning.setChecked(checked)
-        self.ui.cb_tx_rfvga.setEnabled(not checked)
+        enabled = not checked and self.ui.gb_transmitter.isChecked()
+        self.ui.cb_tx_rfvga.setEnabled(enabled)
 
         # rx_autotuning
         checked = mwc_attrs.get("rx_autotuning").value != "0"
         self.ui.chk_rx_autotuning.setChecked(checked)
-        self.ui.cb_rx_bbcoarse1.setEnabled(not checked)
-        self.ui.cb_rx_bbcoarse2.setEnabled(not checked)
-        self.ui.cb_rx_bbfine.setEnabled(not checked)
+        enabled = not checked and self.ui.gb_receiver.isChecked()
+        self.ui.cb_rx_bbcoarse1.setEnabled(enabled)
+        self.ui.cb_rx_bbcoarse2.setEnabled(enabled)
+        self.ui.cb_rx_bbfine.setEnabled(enabled)
 
         # tx_auto_ifvga
         checked = mwc_attrs.get("tx_auto_ifvga").value != "0"
         self.ui.chk_tx_auto_ifvga.setChecked(checked)
-        self.ui.cb_tx_ifvga.setEnabled(not checked)
+        enabled = not checked and self.ui.gb_transmitter.isChecked()
+        self.ui.cb_tx_ifvga.setEnabled(enabled)
 
         # rx_auto_ifvga_rflna
         checked = mwc_attrs.get("rx_auto_ifvga_rflna").value != "0"
         self.ui.chk_rx_auto_ifvga_rflna.setChecked(checked)
-        self.ui.cb_rx_ifvga.setEnabled(not checked)
-        self.ui.cb_rx_rflna.setEnabled(not checked)
+        enabled = not checked and self.ui.gb_receiver.isChecked()
+        self.ui.cb_rx_ifvga.setEnabled(enabled)
+        self.ui.cb_rx_rflna.setEnabled(enabled)
 
         # set sb_tx_target
         tx_target = int(mwc_attrs.get("tx_target").value)
@@ -342,6 +346,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def device_power_switch(self, device: str, checked: bool):
         self.controller.get_device_attrs(device).get("enabled").value = "1" if checked is True else "0"
+        self.update_ui()
 
     def tx_autotuning_switch(self, checked: bool):
         self.controller.get_device_attrs(MWC).get("tx_autotuning").value = "1" if checked else "0"
