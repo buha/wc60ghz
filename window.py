@@ -121,10 +121,10 @@ class MainWindow(QtWidgets.QMainWindow):
             (self.update_register_cell, self.ui.tb_rx_registers, RX_DEVICE, row, col))
 
         # Connect slots to load/save buttons
-        self.ui.btn_tx_load_regs.clicked.connect(self.tx_load_regs)
-        self.ui.btn_rx_load_regs.clicked.connect(self.rx_load_regs)
-        self.ui.btn_tx_save_regs.clicked.connect(self.tx_save_regs)
-        self.ui.btn_rx_save_regs.clicked.connect(self.rx_save_regs)
+        self.ui.btn_tx_load_regs.clicked.connect(lambda: self.load_regs(TX_DEVICE))
+        self.ui.btn_rx_load_regs.clicked.connect(lambda: self.load_regs(RX_DEVICE))
+        self.ui.btn_tx_save_regs.clicked.connect(lambda: self.save_regs(self.ui.tb_tx_registers, "tx_regs_content.txt"))
+        self.ui.btn_rx_save_regs.clicked.connect(lambda: self.save_regs(self.ui.tb_rx_registers, "rx_regs_content.txt"))
 
     def set_vco_ui(self, cb: QtWidgets.QComboBox, value: str):
         null_value = "0"
@@ -423,65 +423,33 @@ class MainWindow(QtWidgets.QMainWindow):
         self.tx_read_regs()
         self.rx_read_regs()
 
-    def tx_load_regs(self):
-        file_name, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Open TX registers file", "Text files (*.txt)")
+    def load_regs(self, device: str):
+        file_name, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Open registers file", "Text files (*.txt)")
         if file_name == "":
             return
 
         with open(file_name, 'r') as infile:
-            infile.readline()
+            for line in infile.readlines()[1:]:
+                reg_index = int(line.split(',')[0].strip('"'))
+                reg_value = int(str(line.split(',')[1]).strip('"\n'))
 
-            for i in range(28):
-                if i == 0 or (12 < i < 16):
-                    continue
-                line = infile.readline()
-                reg = int(line.split(',')[0].strip('"'))
-                value = int(str(line.split(',')[1]).strip('"\n'))
+                self.controller.reg_write(device, reg_index, reg_value)
 
-                self.controller.reg_write(TX_DEVICE, reg, value)
+        if device == RX_DEVICE:
+            self.rx_read_regs()
+        elif device == TX_DEVICE:
+            self.tx_read_regs()
 
-        self.tx_read_regs()
-
-    def rx_load_regs(self):
-        file_name, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Open RX registers file", "Text files (*.txt)")
-        if file_name == "":
-            return
-
-        with open(file_name, 'r') as infile:
-            infile.readline()
-            for i in range(28):
-                if 9 < i < 16:
-                    continue
-
-                line = infile.readline()
-                reg = int(line.split(',')[0].strip('"'))
-                value = int(str(line.split(',')[1]).strip('"\n'))
-
-                self.controller.reg_write(RX_DEVICE, reg, value)
-
-        self.rx_read_regs()
-
-    def tx_save_regs(self):
-        file_name, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Save TX registers content", "tx_regs_content.txt",
+    def save_regs(self, tb: QtWidgets.QTableWidget, file_name: str):
+        file_name, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Save registers content", file_name,
                                                              "Text files (*.txt)")
+
         if file_name != "":
             with open(file_name, 'w') as outfile:
                 outfile.write("\"Address\",\"Data\"\n")
-                for i in range(28):
-                    if i != 0 and (12 < i < 16):
-                        reg_value = self.controller.reg_read(TX_DEVICE, i)
-                        outfile.write("\"" + str(i) + "\",")
-                        outfile.write("\"" + str(reg_value) + "\"\n")
+                for i in range(tb.rowCount()):
+                    reg_index = str(int(tb.item(i, 0).text(), 0))
+                    reg_value = str(int(tb.item(i, 1).text(), 0))
 
-    def rx_save_regs(self):
-        file_name, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Save RX registers content", "rx_regs_content.txt",
-                                                             "Text files (*.txt)")
-        if file_name != "":
-            with open(file_name, 'w') as outfile:
-                outfile.write("\"Address\",\"Data\"\n")
-                for i in range(28):
-                    if 9 < i < 16:
-                        continue
-                    reg_value = self.controller.reg_read(RX_DEVICE, i)
-                    outfile.write("\"" + str(i) + "\",")
-                    outfile.write("\"" + str(reg_value) + "\"\n")
+                    outfile.write("\"" + reg_index + "\",")
+                    outfile.write("\"" + reg_value + "\"\n")
