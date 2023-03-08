@@ -25,9 +25,13 @@ class MainWindow(QtWidgets.QMainWindow):
         self.context_thread.start()
 
     @staticmethod
-    def populate_cb(cb: QtWidgets.QComboBox, items: any):
+    def populate_cb(cb: QtWidgets.QComboBox, items: dict | list):
         cb.blockSignals(True)
         cb.clear()
+
+        for item in items:
+            if item is None:
+                items.remove(item)
 
         if isinstance(items, dict):
             for key, value in items.items():
@@ -122,6 +126,22 @@ class MainWindow(QtWidgets.QMainWindow):
         self.ui.btn_tx_save_regs.clicked.connect(self.tx_save_regs)
         self.ui.btn_rx_save_regs.clicked.connect(self.rx_save_regs)
 
+    def set_vco_ui(self, cb: QtWidgets.QComboBox, value: str):
+        null_value = "0"
+
+        if value == null_value:
+            cb.blockSignals(True)
+            if cb.findText(null_value) == -1:
+                cb.addItem(null_value)
+            cb.setCurrentText(null_value)
+            cb.blockSignals(False)
+        else:
+            null_value_index = cb.findText(null_value)
+            if null_value_index != -1:
+                cb.removeItem(null_value_index)
+
+            cb.setCurrentText(self.controller.from_Hz_to_GHz(value))
+
     def update_ui(self):
         # Firmware
         if not self.controller.valid_ctx():
@@ -189,9 +209,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Tx
         tx_attrs = self.controller.get_device_attrs(TX_DEVICE)
-        tx_freq = str(float(int(tx_attrs.get("vco").value) / 1000000))
-        self.ui.cb_tx_vco.setCurrentText(tx_freq)
-
+        self.set_vco_ui(self.ui.cb_tx_vco, str(int(tx_attrs.get("vco").value)))
         self.ui.gb_transmitter.setChecked(tx_attrs.get("enabled").value != "0")
 
         ifvga_val = tx_attrs.get("if_attn").value
@@ -207,7 +225,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Rx
         rx_attrs = self.controller.get_device_attrs(RX_DEVICE)
-        self.ui.cb_rx_vco.setCurrentText(str(float(int(rx_attrs.get("vco").value) / 1000000)))
+        self.set_vco_ui(self.ui.cb_rx_vco, str(int(rx_attrs.get("vco").value)))
 
         self.ui.gb_receiver.setChecked(rx_attrs.get("enabled").value != "0")
         self.ui.cb_rx_ifvga.setCurrentIndex(int(rx_attrs.get("if_attn").value))
