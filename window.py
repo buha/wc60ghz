@@ -17,12 +17,14 @@ class MainWindow(QtWidgets.QMainWindow):
         # init threads
         self.ui_thread = Heartbeat("heartbeat", 2)
         self.context_thread = Heartbeat("context", 5)
+        self.ping_thread = Heartbeat("ping", 2)
 
         self.populate_objects()
         self.connect_slots()
 
         self.ui_thread.start()
         self.context_thread.start()
+        self.ping_thread.start()
 
     @staticmethod
     def populate_cb(cb: QtWidgets.QComboBox, items: dict | list):
@@ -46,7 +48,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def populate_objects(self):
         # Add contexts combo box
         self.ui.cb_available_contexts.clear()
-        self.ui.cb_available_contexts.addItems(["Select..."])
+        self.ui.cb_available_contexts.addItems([NO_DEVICE_OPTION])
 
         # Populate combobox values with human-readable/meaningful strings
         self.populate_cb(self.ui.cb_tx_ifvga, IFVGA)
@@ -61,6 +63,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # Connect threads
         self.ui_thread.pulse.connect(self.update_ui)
         self.context_thread.pulse.connect(self.update_contexts)
+        self.ping_thread.pulse.connect(self.ping)
 
         # Connect slot to update context labels
         self.ui.cb_available_contexts.currentIndexChanged.connect(self.ctx_changed)
@@ -126,6 +129,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.ui.btn_tx_save_regs.clicked.connect(lambda: self.save_regs(self.ui.tb_tx_registers, "tx_regs_content.txt"))
         self.ui.btn_rx_save_regs.clicked.connect(lambda: self.save_regs(self.ui.tb_rx_registers, "rx_regs_content.txt"))
 
+    def ping(self):
+        exception = self.controller.valid_ctx()[1]
+        if len(exception) != 0:
+            QtWidgets.QMessageBox.critical(self, "Failed to access device", exception)
+            self.forget_ctx()
+
     def set_vco_ui(self, cb: QtWidgets.QComboBox, value: str):
         null_value = "0"
 
@@ -144,143 +153,147 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def update_ui(self):
         # Firmware
-        if not self.controller.valid_ctx():
+        if not self.controller.valid_ctx()[0]:
             return
-        mwc_attrs = self.controller.get_device_attrs(MWC)
 
-        # tx_autotuning
-        checked = mwc_attrs.get("tx_autotuning").value != "0"
-        self.ui.chk_tx_autotuning.setChecked(checked)
-        enabled = not checked and self.ui.gb_transmitter.isChecked()
-        self.ui.cb_tx_rfvga.setEnabled(enabled)
+        try:
+            mwc_attrs = self.controller.get_device_attrs(MWC)
 
-        # rx_autotuning
-        checked = mwc_attrs.get("rx_autotuning").value != "0"
-        self.ui.chk_rx_autotuning.setChecked(checked)
-        enabled = not checked and self.ui.gb_receiver.isChecked()
-        self.ui.cb_rx_bbcoarse1.setEnabled(enabled)
-        self.ui.cb_rx_bbcoarse2.setEnabled(enabled)
-        self.ui.cb_rx_bbfine.setEnabled(enabled)
+            # tx_autotuning
+            checked = mwc_attrs.get("tx_autotuning").value != "0"
+            self.ui.chk_tx_autotuning.setChecked(checked)
+            enabled = not checked and self.ui.gb_transmitter.isChecked()
+            self.ui.cb_tx_rfvga.setEnabled(enabled)
 
-        # tx_auto_ifvga
-        checked = mwc_attrs.get("tx_auto_ifvga").value != "0"
-        self.ui.chk_tx_auto_ifvga.setChecked(checked)
-        enabled = not checked and self.ui.gb_transmitter.isChecked()
-        self.ui.cb_tx_ifvga.setEnabled(enabled)
+            # rx_autotuning
+            checked = mwc_attrs.get("rx_autotuning").value != "0"
+            self.ui.chk_rx_autotuning.setChecked(checked)
+            enabled = not checked and self.ui.gb_receiver.isChecked()
+            self.ui.cb_rx_bbcoarse1.setEnabled(enabled)
+            self.ui.cb_rx_bbcoarse2.setEnabled(enabled)
+            self.ui.cb_rx_bbfine.setEnabled(enabled)
 
-        # rx_auto_ifvga_rflna
-        checked = mwc_attrs.get("rx_auto_ifvga_rflna").value != "0"
-        self.ui.chk_rx_auto_ifvga_rflna.setChecked(checked)
-        enabled = not checked and self.ui.gb_receiver.isChecked()
-        self.ui.cb_rx_ifvga.setEnabled(enabled)
-        self.ui.cb_rx_rflna.setEnabled(enabled)
+            # tx_auto_ifvga
+            checked = mwc_attrs.get("tx_auto_ifvga").value != "0"
+            self.ui.chk_tx_auto_ifvga.setChecked(checked)
+            enabled = not checked and self.ui.gb_transmitter.isChecked()
+            self.ui.cb_tx_ifvga.setEnabled(enabled)
 
-        # set sb_tx_target
-        tx_target = int(mwc_attrs.get("tx_target").value)
-        self.ui.sb_tx_target.setValue(tx_target)
+            # rx_auto_ifvga_rflna
+            checked = mwc_attrs.get("rx_auto_ifvga_rflna").value != "0"
+            self.ui.chk_rx_auto_ifvga_rflna.setChecked(checked)
+            enabled = not checked and self.ui.gb_receiver.isChecked()
+            self.ui.cb_rx_ifvga.setEnabled(enabled)
+            self.ui.cb_rx_rflna.setEnabled(enabled)
 
-        # set sb_rx_target
-        rx_target = int(mwc_attrs.get("rx_target").value)
-        self.ui.sb_rx_target.setValue(rx_target)
+            # set sb_tx_target
+            tx_target = int(mwc_attrs.get("tx_target").value)
+            self.ui.sb_tx_target.setValue(tx_target)
 
-        # set lbl_tx_det_dyn
-        raw = self.controller.get_device_ch_attr(MWC, "tx_det", "raw").value
-        scale = self.controller.get_device_ch_attr(MWC, "tx_det", "scale").value
-        tx_det_out = int(float(raw) * float(scale))
-        self.ui.lbl_tx_det_dyn.setText(str(tx_det_out) + " mV")
+            # set sb_rx_target
+            rx_target = int(mwc_attrs.get("rx_target").value)
+            self.ui.sb_rx_target.setValue(rx_target)
 
-        # set lbl_rx_det_dyn
-        raw = self.controller.get_device_ch_attr(MWC, "rx_det", "raw").value
-        scale = self.controller.get_device_ch_attr(MWC, "rx_det", "scale").value
-        rx_det_out = int(float(raw) * float(scale))
-        self.ui.lbl_rx_det_dyn.setText(str(rx_det_out) + " mV")
+            # set lbl_tx_det_dyn
+            raw = self.controller.get_device_ch_attr(MWC, "tx_det", "raw").value
+            scale = self.controller.get_device_ch_attr(MWC, "tx_det", "scale").value
+            tx_det_out = int(float(raw) * float(scale))
+            self.ui.lbl_tx_det_dyn.setText(str(tx_det_out) + " mV")
 
-        # set lbl_tx_autotuning
-        tx_diff = tx_det_out - tx_target
-        self.ui.lbl_tx_autotuning.setText("{0:+d} mV".format(tx_diff))
-        self.ui.lbl_tx_autotuning.setStyleSheet(
-            "font-weight: bold" if abs(tx_diff) > self.ui.sb_tx_tolerance.value() else "font-weight: normal")
+            # set lbl_rx_det_dyn
+            raw = self.controller.get_device_ch_attr(MWC, "rx_det", "raw").value
+            scale = self.controller.get_device_ch_attr(MWC, "rx_det", "scale").value
+            rx_det_out = int(float(raw) * float(scale))
+            self.ui.lbl_rx_det_dyn.setText(str(rx_det_out) + " mV")
 
-        # set lbl_rx_autotuning
-        rx_diff = rx_det_out - rx_target
-        self.ui.lbl_rx_autotuning.setText("{0:+d} mV".format(rx_diff))
-        self.ui.lbl_rx_autotuning.setStyleSheet(
-            "font-weight: bold" if abs(rx_diff) > self.ui.sb_rx_tolerance.value() else "font-weight: normal")
+            # set lbl_tx_autotuning
+            tx_diff = tx_det_out - tx_target
+            self.ui.lbl_tx_autotuning.setText("{0:+d} mV".format(tx_diff))
+            self.ui.lbl_tx_autotuning.setStyleSheet(
+                "font-weight: bold" if abs(tx_diff) > self.ui.sb_tx_tolerance.value() else "font-weight: normal")
 
-        # Tx
-        tx_attrs = self.controller.get_device_attrs(TX_DEVICE)
-        self.set_vco_ui(self.ui.cb_tx_vco, str(int(tx_attrs.get("vco").value)))
-        self.ui.gb_transmitter.setChecked(tx_attrs.get("enabled").value != "0")
+            # set lbl_rx_autotuning
+            rx_diff = rx_det_out - rx_target
+            self.ui.lbl_rx_autotuning.setText("{0:+d} mV".format(rx_diff))
+            self.ui.lbl_rx_autotuning.setStyleSheet(
+                "font-weight: bold" if abs(rx_diff) > self.ui.sb_rx_tolerance.value() else "font-weight: normal")
 
-        ifvga_val = tx_attrs.get("if_attn").value
-        rfvga_val = tx_attrs.get("rf_attn").value
-        self.ui.cb_tx_ifvga.setCurrentIndex(int(ifvga_val))
-        self.ui.cb_tx_rfvga.setCurrentIndex(int(rfvga_val))
+            # Tx
+            tx_attrs = self.controller.get_device_attrs(TX_DEVICE)
+            self.set_vco_ui(self.ui.cb_tx_vco, str(int(tx_attrs.get("vco").value)))
+            self.ui.gb_transmitter.setChecked(tx_attrs.get("enabled").value != "0")
 
-        gain = 32 - float(ifvga_val) * 1.3 - float(rfvga_val) * 1.3
-        self.ui.lbl_tx_gain_dyn.setText("{:.1f} dB".format(gain))
+            ifvga_val = tx_attrs.get("if_attn").value
+            rfvga_val = tx_attrs.get("rf_attn").value
+            self.ui.cb_tx_ifvga.setCurrentIndex(int(ifvga_val))
+            self.ui.cb_tx_rfvga.setCurrentIndex(int(rfvga_val))
 
-        temp = self.controller.get_device_ch_attr(TX_DEVICE, "temp", "raw").value
-        self.ui.lbl_tx_temp_dyn.setText(str(temp) + " " + self.controller.temp_range(int(temp)))
+            gain = 32 - float(ifvga_val) * 1.3 - float(rfvga_val) * 1.3
+            self.ui.lbl_tx_gain_dyn.setText("{:.1f} dB".format(gain))
 
-        # Rx
-        rx_attrs = self.controller.get_device_attrs(RX_DEVICE)
-        self.set_vco_ui(self.ui.cb_rx_vco, str(int(rx_attrs.get("vco").value)))
+            temp = self.controller.get_device_ch_attr(TX_DEVICE, "temp", "raw").value
+            self.ui.lbl_tx_temp_dyn.setText(str(temp) + " " + self.controller.temp_range(int(temp)))
 
-        self.ui.gb_receiver.setChecked(rx_attrs.get("enabled").value != "0")
-        self.ui.cb_rx_ifvga.setCurrentIndex(int(rx_attrs.get("if_attn").value))
-        self.ui.cb_rx_rflna.setCurrentIndex(int(rx_attrs.get("rf_lna_gain").value))
+            # Rx
+            rx_attrs = self.controller.get_device_attrs(RX_DEVICE)
+            self.set_vco_ui(self.ui.cb_rx_vco, str(int(rx_attrs.get("vco").value)))
 
-        temp = self.controller.get_device_ch_attr(RX_DEVICE, "temp", "raw").value
-        self.ui.lbl_rx_temp_dyn.setText(str(temp) + " " + self.controller.temp_range(int(temp)))
+            self.ui.gb_receiver.setChecked(rx_attrs.get("enabled").value != "0")
+            self.ui.cb_rx_ifvga.setCurrentIndex(int(rx_attrs.get("if_attn").value))
+            self.ui.cb_rx_rflna.setCurrentIndex(int(rx_attrs.get("rf_lna_gain").value))
 
-        self.ui.cb_rx_bbcoarse1.setCurrentIndex(self.ui.cb_rx_bbcoarse1.findData(int(rx_attrs.get("bb_attn1").value)))
-        self.ui.cb_rx_bbcoarse2.setCurrentIndex(self.ui.cb_rx_bbcoarse2.findData(int(rx_attrs.get("bb_attn2").value)))
-        self.ui.cb_rx_bbfine.setCurrentIndex(self.ui.cb_rx_bbfine.findData(int(rx_attrs.get("bb_attni_fine").value)))
+            temp = self.controller.get_device_ch_attr(RX_DEVICE, "temp", "raw").value
+            self.ui.lbl_rx_temp_dyn.setText(str(temp) + " " + self.controller.temp_range(int(temp)))
 
-        gain = 69 - float(ifvga_val) * 1.3 - float(rx_attrs.get("rf_lna_gain").value) * 6 + \
-               int(self.ui.cb_rx_bbcoarse1.currentText().split()[0]) + \
-               int(self.ui.cb_rx_bbcoarse2.currentText().split()[0]) + \
-               int(self.ui.cb_rx_bbfine.currentText().split()[0])
-        self.ui.lbl_rx_gain_dyn.setText("{:.1f} dB".format(gain))
+            self.ui.cb_rx_bbcoarse1.setCurrentIndex(
+                self.ui.cb_rx_bbcoarse1.findData(int(rx_attrs.get("bb_attn1").value)))
+            self.ui.cb_rx_bbcoarse2.setCurrentIndex(
+                self.ui.cb_rx_bbcoarse2.findData(int(rx_attrs.get("bb_attn2").value)))
+            self.ui.cb_rx_bbfine.setCurrentIndex(
+                self.ui.cb_rx_bbfine.findData(int(rx_attrs.get("bb_attni_fine").value)))
 
-    def init_ui(self):
+            gain = 69 - float(ifvga_val) * 1.3 - float(rx_attrs.get("rf_lna_gain").value) * 6 + \
+                   int(self.ui.cb_rx_bbcoarse1.currentText().split()[0]) + \
+                   int(self.ui.cb_rx_bbcoarse2.currentText().split()[0]) + \
+                   int(self.ui.cb_rx_bbfine.currentText().split()[0])
+            self.ui.lbl_rx_gain_dyn.setText("{:.1f} dB".format(gain))
+        except:
+            pass
+
+    def init_ctx_ui(self):
         # Tabs
         self.ui.transceiver_tab.setEnabled(False)
         self.ui.phy_tab.setEnabled(False)
         self.ui.serdes_tab.setEnabled(False)
-        self.ui.lbl_hw_model_dyn.setText("-")
-        self.ui.lbl_hw_version_dyn.setText("-")
-        self.ui.lbl_hw_serial_dyn.setText("-")
-        self.ui.lbl_carrier_model_dyn.setText("-")
-        self.ui.lbl_carrier_version_dyn.setText("-")
-        self.ui.lbl_carrier_serial_dyn.setText("-")
-        self.ui.lbl_firmware_dyn.setText("-")
+        self.ui.lbl_hw_model_dyn.setText(EMPTY_VALUE)
+        self.ui.lbl_hw_version_dyn.setText(EMPTY_VALUE)
+        self.ui.lbl_hw_serial_dyn.setText(EMPTY_VALUE)
+        self.ui.lbl_carrier_model_dyn.setText(EMPTY_VALUE)
+        self.ui.lbl_carrier_version_dyn.setText(EMPTY_VALUE)
+        self.ui.lbl_carrier_serial_dyn.setText(EMPTY_VALUE)
+        self.ui.lbl_firmware_dyn.setText(EMPTY_VALUE)
 
     def update_contexts(self):
         cb = self.ui.cb_available_contexts
         ports = self.controller.get_ports()
         options_in_cb = [cb.itemText(i) for i in range(1, cb.count())]
+        removed_item = False
 
         for port in ports:
             index = cb.findText(port)
             if index <= 0:
                 cb.addItems([port])
 
-        # Check if the selected device is still connected
-        if cb.currentIndex() > 0:
-            try:
-                self.controller.connect_to_ctx(CONNECTION_TYPE + ":" + cb.currentText() + SERIAL_CONFIG)
-            except Exception as e:
-                if str(e).__contains__("[Errno 2]"):
-                    print(e)
-                    cb.currentIndexChanged.emit(cb.currentIndex())
-                else:
-                    pass
+        for option in options_in_cb:
+            if option not in ports:
+                removed_item = True
 
-        for port in options_in_cb:
-            if port not in ports:
-                cb.removeItem(cb.findText(port))
+                cb.blockSignals(True)
+                cb.removeItem(cb.findText(option))
+                cb.blockSignals(False)
+
+        if removed_item:
+            self.ui.cb_available_contexts.setCurrentText(NO_DEVICE_OPTION)
 
     def update_register_cell(self, register: QtWidgets.QTableWidget, device: str, row: int, col: int):
         reg = int(register.item(row, 0).text().split("x")[1], 16)
@@ -294,14 +307,12 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def ctx_changed(self):
         text = self.ui.cb_available_contexts.currentText()
-        index = self.ui.cb_available_contexts.findText(text)
-        if text == "Select context...":
+        if text == NO_DEVICE_OPTION:
+            self.controller.remove_ctx()
+            self.init_ctx_ui()
             return
 
         text = self.controller.make_ctx_string(text)
-
-        # Disable "Select context..." option
-        self.ui.cb_available_contexts.model().item(0).setEnabled(False)
 
         try:
             print(CONNECTION_TYPE + ":" + text + SERIAL_CONFIG)
@@ -329,59 +340,37 @@ class MainWindow(QtWidgets.QMainWindow):
 
             self.tx_read_regs()
             self.rx_read_regs()
-            self.ui_thread.start()
         except Exception as e:
-            if str(e).__contains__("[Errno 5]"):
-                # Context already created
-                pass
-            elif str(e).__contains__("[Errno 2]"):
-                # Device not connected
-                # Used when disconnecting a device
-                self.controller.remove_ctx()
-                self.ui.cb_available_contexts.removeItem(index)
-                self.ui.cb_available_contexts.setCurrentIndex(0)
-                self.init_ui()
-            elif str(e).__contains__("[Errno 1460]") or str(e).__contains__("Errno 110"):
-                # Not an IIO device
-                self.controller.remove_ctx()
-                self.init_ui()
-            elif str(e).__contains__("[Errno 16]"):
-                self.controller.remove_ctx()
-                QtWidgets.QMessageBox.critical(
-                    self,
-                    "Device busy",
-                    "Cannot create context on port " + text + ". The device might already be in use."
-                )
-            elif str(e).__contains__("[Errno 13]"):
-                # Permission denied
-                self.controller.remove_ctx()
-                QtWidgets.QMessageBox.critical(
-                    self,
-                    "Permission denied",
-                    "Cannot create context on port " + text
-                )
-            return
+            self.update_contexts()
+            self.forget_ctx()
+
+            QtWidgets.QMessageBox.critical(self, "Failed to connect to device", str(e))
+
+    def forget_ctx(self):
+        self.controller.remove_ctx()
+        self.init_ctx_ui()
+        self.ui.cb_available_contexts.setCurrentText(NO_DEVICE_OPTION)
 
     def device_power_switch(self, device: str, checked: bool):
-        self.controller.get_device_attrs(device).get("enabled").value = "1" if checked is True else "0"
+        self.controller.set_device_attr(device, "enabled", "1" if checked else "0")
         self.update_ui()
 
     def tx_autotuning_switch(self, checked: bool):
-        self.controller.get_device_attrs(MWC).get("tx_autotuning").value = "1" if checked else "0"
+        self.controller.set_device_attr(MWC, "tx_autotuning", "1" if checked else "0")
         self.ui.cb_tx_rfvga.setEnabled(not checked)
 
     def rx_autotuning_switch(self, checked: bool):
-        self.controller.get_device_attrs(MWC).get("rx_autotuning").value = "1" if checked else "0"
+        self.controller.set_device_attr(MWC, "rx_autotuning", "1" if checked else "0")
         self.ui.cb_rx_bbcoarse1.setEnabled(not checked)
         self.ui.cb_rx_bbcoarse2.setEnabled(not checked)
         self.ui.cb_rx_bbfine.setEnabled(not checked)
 
     def tx_auto_ifvga_switch(self, checked: bool):
-        self.controller.get_device_attrs(MWC).get("tx_auto_ifvga").value = "1" if checked else "0"
+        self.controller.set_device_attr(MWC, "tx_auto_ifvga", "1" if checked else "0")
         self.ui.cb_tx_ifvga.setEnabled(not checked)
 
     def rx_auto_ifvga_rflna_switch(self, checked: bool):
-        self.controller.get_device_attrs(MWC).get("rx_auto_ifvga_rflna").value = "1" if checked else "0"
+        self.controller.set_device_attr(MWC, "rx_auto_ifvga_rflna", "1" if checked else "0")
         self.ui.cb_rx_ifvga.setEnabled(not checked)
         self.ui.cb_rx_rflna.setEnabled(not checked)
 
@@ -416,7 +405,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         reply = q.exec()
         if reply == QtWidgets.QMessageBox.StandardButton.Yes:
-            self.controller.get_device_attrs(MWC).get("reset").value = '1'
+            self.controller.set_device_attr(MWC, "reset", "1")
         else:
             return
 

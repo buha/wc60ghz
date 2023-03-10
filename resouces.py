@@ -4,6 +4,12 @@ RX_DEVICE = "hmc6301"
 SERIAL_CONFIG = ",115200,8n2n"
 CONNECTION_TYPE = "serial"
 
+TEST_DEVICE = MWC
+TEST_ATTR = "tx_target"
+
+NO_DEVICE_OPTION = "No device"
+EMPTY_VALUE = "-"
+
 IFVGA = {
     "0 dB": 0,
     "-1.3 dB": 1,

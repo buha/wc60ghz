@@ -6,12 +6,15 @@ import serial
 from PySide6.QtSerialPort import QSerialPortInfo
 from iio import Context
 
+from resouces import TEST_DEVICE, TEST_ATTR
+
 
 class Controller:
     __iio_ctx = None
 
     def __init__(self) -> None:
         self.__iio_ctx: Context()
+        self.__ctx_config = ""
 
     @staticmethod
     def from_GHz_to_Hz(value: str) -> str | None:
@@ -62,29 +65,73 @@ class Controller:
     def get_ports() -> list:
         return [port.portName() for port in QSerialPortInfo.availablePorts()]
 
-    def valid_ctx(self) -> bool:
-        return self.__iio_ctx is not None
+    def valid_ctx(self) -> (bool, str):
+        if self.__iio_ctx is None:
+            return False, ""
+
+        try:
+            self.__iio_ctx.find_device(TEST_DEVICE).attrs.get(TEST_ATTR).value
+        except Exception as e:
+            return False, str(e)
+
+        return True, ""
 
     def remove_ctx(self):
-        self.__iio_ctx = None
+        print(" ----  try to DELETE CTX")
+        if self.__iio_ctx is not None:
+            print(" ----  DELETED CTX")
+            del self.__iio_ctx
+            self.__iio_ctx = None
+            self.__ctx_config = ""
 
     def get_device_attrs(self, device: str) -> {}:
-        return self.__iio_ctx.find_device(device).attrs
+        try:
+            return self.__iio_ctx.find_device(device).attrs
+        except:
+            if not self.valid_ctx()[0]:
+                self.remove_ctx()
 
     def get_device_ch_attr(self, device: str, ch: str, attr: str) -> iio.ChannelAttr:
-        return self.__iio_ctx.find_device(device).find_channel(ch).attrs.get(attr)
+        try:
+            return self.__iio_ctx.find_device(device).find_channel(ch).attrs.get(attr)
+        except:
+            if not self.valid_ctx()[0]:
+                self.remove_ctx()
 
     def reg_write(self, device: str, reg: int, value: int):
-        self.__iio_ctx.find_device(device).reg_write(reg, value)
+        try:
+            self.__iio_ctx.find_device(device).reg_write(reg, value)
+        except:
+            if not self.valid_ctx()[0]:
+                self.remove_ctx()
+
+    def set_device_attr(self, device: str, reg: str, value: str):
+        try:
+            self.get_device_attrs(device).get(reg).value = value
+        except:
+            if not self.valid_ctx()[0]:
+                self.remove_ctx()
 
     def reg_read(self, device: str, i: int) -> int:
-        return self.__iio_ctx.find_device(device).reg_read(i)
+        try:
+            return self.__iio_ctx.find_device(device).reg_read(i)
+        except:
+            if not self.valid_ctx()[0]:
+                self.remove_ctx()
 
     def get_all_attrs(self) -> {}:
-        return self.__iio_ctx.attrs
+        try:
+            return self.__iio_ctx.attrs
+        except:
+            if not self.valid_ctx()[0]:
+                self.remove_ctx()
 
     def get_desc(self) -> str:
-        return self.__iio_ctx.description
+        try:
+            return self.__iio_ctx.description
+        except:
+            if not self.valid_ctx()[0]:
+                self.remove_ctx()
 
     @staticmethod
     def make_ctx_string(text: str) -> str:
@@ -102,15 +149,22 @@ class Controller:
         return freqs
 
     def write_to_iio(self, device: str, attr: str, value: str):
-        if self.__iio_ctx is None or value is None or self.__iio_ctx.find_device(device).attrs.get(attr) is None:
-            print("fail", attr, self.__iio_ctx, value, self.__iio_ctx.find_device(device).attrs)
-            return
+        try:
+            if self.__iio_ctx is None or value is None or self.__iio_ctx.find_device(device).attrs.get(attr) is None:
+                print("fail", attr, self.__iio_ctx, value, self.__iio_ctx.find_device(device).attrs)
+                return
 
-        if self.__iio_ctx.find_device(device).attrs.get(attr).value != str(value):
-            self.__iio_ctx.find_device(device).attrs.get(attr).value = str(value)
-            print("write", attr)
-        else:
-            print("no change", attr)
+            if self.__iio_ctx.find_device(device).attrs.get(attr).value != str(value):
+                self.__iio_ctx.find_device(device).attrs.get(attr).value = str(value)
+                print("write", attr)
+            else:
+                print("no change", attr)
+        except:
+            if not self.valid_ctx()[0]:
+                self.remove_ctx()
 
-    def connect_to_ctx(self, ctx_config: str):
+    def connect_to_ctx(self, ctx_config: str) -> bool:
         self.__iio_ctx = iio.Context(ctx_config)
+        self.__ctx_config = ctx_config
+
+        return self.__iio_ctx is not None
