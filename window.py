@@ -1,30 +1,34 @@
 # This Python file uses the following encoding: utf-8
+import traceback
+
 from PyQt6 import QtWidgets, uic
 
 from controller import Controller
 from heartbeat import Heartbeat
+from logger import *
 from resouces import *
 
 
 class MainWindow(QtWidgets.QMainWindow):
-    def __init__(self, controller: Controller, *args, **kwargs) -> None:
+    def __init__(self, controller: Controller, logger: Logger, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.controller = controller
+        self.__logger = logger
 
         # Load Qt ui
         self.ui = uic.loadUi("design.ui", self)
 
         # init threads
-        self.ui_thread = Heartbeat("heartbeat", 2)
-        self.context_thread = Heartbeat("context", 5)
-        self.ping_thread = Heartbeat("ping", 2)
+        self.__ui_thread = Heartbeat("ui", 2)
+        self.__context_thread = Heartbeat("context", 5)
+        self.__ping_thread = Heartbeat("ping", 2)
 
         self.populate_objects()
         self.connect_slots()
 
-        self.ui_thread.start()
-        self.context_thread.start()
-        self.ping_thread.start()
+        self.__ui_thread.start()
+        self.__context_thread.start()
+        self.__ping_thread.start()
 
     @staticmethod
     def populate_cb(cb: QtWidgets.QComboBox, items: dict | list):
@@ -61,9 +65,9 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def connect_slots(self):
         # Connect threads
-        self.ui_thread.pulse.connect(self.update_ui)
-        self.context_thread.pulse.connect(self.update_contexts)
-        self.ping_thread.pulse.connect(self.ping)
+        self.__ui_thread.pulse.connect(self.update_ui)
+        self.__context_thread.pulse.connect(self.update_contexts)
+        self.__ping_thread.pulse.connect(self.ping)
 
         # Connect slot to update context labels
         self.ui.cb_available_contexts.currentIndexChanged.connect(self.ctx_changed)
@@ -116,12 +120,10 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Connect slots to register maps
         self.ui.tb_tx_registers.cellChanged.connect(
-            lambda row, col: self.ui.tb_tx_registers.cellChanged.connect
-            (self.update_register_cell, self.ui.tb_tx_registers, TX_DEVICE, row, col))
+            lambda row, col: self.update_register_cell(self.ui.tb_tx_registers, TX_DEVICE, row, col))
 
         self.ui.tb_rx_registers.cellChanged.connect(
-            lambda row, col: self.ui.tb_rx_registers.cellChanged.connect
-            (self.update_register_cell, self.ui.tb_rx_registers, RX_DEVICE, row, col))
+            lambda row, col: self.update_register_cell(self.ui.tb_rx_registers, RX_DEVICE, row, col))
 
         # Connect slots to load/save buttons
         self.ui.btn_tx_load_regs.clicked.connect(lambda: self.load_regs(TX_DEVICE))
@@ -129,9 +131,17 @@ class MainWindow(QtWidgets.QMainWindow):
         self.ui.btn_tx_save_regs.clicked.connect(lambda: self.save_regs(self.ui.tb_tx_registers, "tx_regs_content.txt"))
         self.ui.btn_rx_save_regs.clicked.connect(lambda: self.save_regs(self.ui.tb_rx_registers, "rx_regs_content.txt"))
 
+        # Connect tolerances
+        self.ui.sb_tx_tolerance.valueChanged.connect(
+            lambda value: self.__logger.write(LogType.UI, "Set TX tolerance to {}".format(value)))
+        self.ui.sb_rx_tolerance.valueChanged.connect(
+            lambda value: self.__logger.write(LogType.UI, "Set RX tolerance to {}".format(value)))
+
     def ping(self):
         exception = self.controller.valid_ctx()[1]
         if len(exception) != 0:
+            self.__logger.write(LogType.IIO_DEVICE, "Failed to access device {} \n {}"
+                                .format(self.controller.get_uri(), traceback.format_exc()))
             QtWidgets.QMessageBox.critical(self, "Failed to access device", exception)
             self.forget_ctx()
 
@@ -153,7 +163,10 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def update_ui(self):
         # Firmware
-        if not self.controller.valid_ctx()[0]:
+        valid, exception = self.controller.valid_ctx()
+        if not valid:
+            if len(exception) != 0:
+                self.__logger.write(LogType.IIO_DEVICE, "Failed to access device {}".format(self.controller.get_uri()))
             return
 
         try:
@@ -252,19 +265,20 @@ class MainWindow(QtWidgets.QMainWindow):
             self.ui.cb_rx_bbfine.setCurrentIndex(
                 self.ui.cb_rx_bbfine.findData(int(rx_attrs.get("bb_attni_fine").value)))
 
-            gain = 69 - float(ifvga_val) * 1.3 - float(rx_attrs.get("rf_lna_gain").value) * 6 + \
-                   int(self.ui.cb_rx_bbcoarse1.currentText().split()[0]) + \
-                   int(self.ui.cb_rx_bbcoarse2.currentText().split()[0]) + \
-                   int(self.ui.cb_rx_bbfine.currentText().split()[0])
+            gain = 69 - float(ifvga_val) * 1.3 - float(rx_attrs.get("rf_lna_gain").value) * 6 + int(
+                self.ui.cb_rx_bbcoarse1.currentText().split()[0]) + int(
+                self.ui.cb_rx_bbcoarse2.currentText().split()[0]) + int(
+                self.ui.cb_rx_bbfine.currentText().split()[0])
             self.ui.lbl_rx_gain_dyn.setText("{:.1f} dB".format(gain))
         except:
-            pass
+            self.__logger.write(LogType.ERROR, "Update UI failed \n {}".format(traceback.format_exc()))
 
     def init_ctx_ui(self):
         # Tabs
         self.ui.transceiver_tab.setEnabled(False)
         self.ui.phy_tab.setEnabled(False)
         self.ui.serdes_tab.setEnabled(False)
+        self.ui.tabWidget.setTabText(1, "Transceiver")
         self.ui.lbl_hw_model_dyn.setText(EMPTY_VALUE)
         self.ui.lbl_hw_version_dyn.setText(EMPTY_VALUE)
         self.ui.lbl_hw_serial_dyn.setText(EMPTY_VALUE)
@@ -298,29 +312,37 @@ class MainWindow(QtWidgets.QMainWindow):
     def update_register_cell(self, register: QtWidgets.QTableWidget, device: str, row: int, col: int):
         reg = int(register.item(row, 0).text().split("x")[1], 16)
         value = register.item(row, 1).text()
+        self.__logger.write(LogType.UI, "Set device {}, reg {}, to {}".format(device, reg, value))
 
         value = int(value.split("x")[1], 16) if value.__contains__("0x") else int(value, 16)
         value &= 0xff
         self.controller.reg_write(device, reg, value)
 
+        register.blockSignals(True)
         register.setItem(row, col, QtWidgets.QTableWidgetItem(hex(value)))
+        register.blockSignals(False)
 
     def ctx_changed(self):
         text = self.ui.cb_available_contexts.currentText()
+        self.__logger.write(LogType.UI, "Set context to {}".format(text))
+
         if text == NO_DEVICE_OPTION:
             self.controller.remove_ctx()
             self.init_ctx_ui()
             return
 
         text = self.controller.make_ctx_string(text)
+        uri = CONNECTION_TYPE + ":" + text + SERIAL_CONFIG
 
         try:
-            print(CONNECTION_TYPE + ":" + text + SERIAL_CONFIG)
-            self.controller.connect_to_ctx(CONNECTION_TYPE + ":" + text + SERIAL_CONFIG)
+            print(uri)
+            self.controller.connect_to_ctx(uri)
 
             # Context attributes
             ctx_attrs = self.controller.get_all_attrs()
-            self.ui.lbl_hw_model_dyn.setText(ctx_attrs.get("hw_model"))
+            hw_model = ctx_attrs.get("hw_model")
+            self.ui.tabWidget.setTabText(1, hw_model)
+            self.ui.lbl_hw_model_dyn.setText(hw_model)
             self.ui.lbl_hw_version_dyn.setText(ctx_attrs.get("hw_version"))
             self.ui.lbl_hw_serial_dyn.setText(ctx_attrs.get("hw_serial"))
             self.ui.lbl_carrier_model_dyn.setText(ctx_attrs.get("carrier_model"))
@@ -341,6 +363,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self.tx_read_regs()
             self.rx_read_regs()
         except Exception as e:
+            self.__logger.write(LogType.IIO_DEVICE, "Failed to connect device {} \n {}"
+                                .format(uri, traceback.format_exc()))
             self.update_contexts()
             self.forget_ctx()
 
@@ -352,29 +376,40 @@ class MainWindow(QtWidgets.QMainWindow):
         self.ui.cb_available_contexts.setCurrentText(NO_DEVICE_OPTION)
 
     def device_power_switch(self, device: str, checked: bool):
+        self.__logger.write(LogType.UI, "Set device {}, attr {}, to {}"
+                            .format(device, "enabled", "1" if checked else "0"))
         self.controller.set_device_attr(device, "enabled", "1" if checked else "0")
-        self.update_ui()
 
     def tx_autotuning_switch(self, checked: bool):
+        self.__logger.write(LogType.UI, "Set device {}, attr {}, to {}"
+                            .format(MWC, "tx_autotuning", "1" if checked else "0"))
         self.controller.set_device_attr(MWC, "tx_autotuning", "1" if checked else "0")
         self.ui.cb_tx_rfvga.setEnabled(not checked)
 
     def rx_autotuning_switch(self, checked: bool):
+        self.__logger.write(LogType.UI, "Set device {}, attr {}, to {}"
+                            .format(MWC, "rx_autotuning", "1" if checked else "0"))
         self.controller.set_device_attr(MWC, "rx_autotuning", "1" if checked else "0")
         self.ui.cb_rx_bbcoarse1.setEnabled(not checked)
         self.ui.cb_rx_bbcoarse2.setEnabled(not checked)
         self.ui.cb_rx_bbfine.setEnabled(not checked)
 
     def tx_auto_ifvga_switch(self, checked: bool):
+        self.__logger.write(LogType.UI, "Set device {}, attr {}, to {}"
+                            .format(MWC, "tx_auto_ifvga", "1" if checked else "0"))
         self.controller.set_device_attr(MWC, "tx_auto_ifvga", "1" if checked else "0")
         self.ui.cb_tx_ifvga.setEnabled(not checked)
 
     def rx_auto_ifvga_rflna_switch(self, checked: bool):
+        self.__logger.write(LogType.UI, "Set device {}, attr {}, to {}"
+                            .format(MWC, "rx_auto_ifvga_rflna", "1" if checked else "0"))
         self.controller.set_device_attr(MWC, "rx_auto_ifvga_rflna", "1" if checked else "0")
         self.ui.cb_rx_ifvga.setEnabled(not checked)
         self.ui.cb_rx_rflna.setEnabled(not checked)
 
     def tx_read_regs(self):
+        self.__logger.write(LogType.UI, "Refresh TX registers")
+
         row = 0
         for i in range(28):
             if i == 0 or (12 < i < 16):
@@ -386,6 +421,8 @@ class MainWindow(QtWidgets.QMainWindow):
             row = row + 1
 
     def rx_read_regs(self):
+        self.__logger.write(LogType.UI, "Refresh RX registers")
+
         row = 0
         for i in range(28):
             if 9 < i < 16:
@@ -405,9 +442,12 @@ class MainWindow(QtWidgets.QMainWindow):
 
         reply = q.exec()
         if reply == QtWidgets.QMessageBox.StandardButton.Yes:
+            self.__logger.write(LogType.UI, "Reset device")
             self.controller.set_device_attr(MWC, "reset", "1")
         else:
             return
+
+        self.__logger.write(LogType.IIO_DEVICE, "Reset device {}".format(MWC))
 
         self.tx_read_regs()
         self.rx_read_regs()
@@ -429,6 +469,8 @@ class MainWindow(QtWidgets.QMainWindow):
         elif device == TX_DEVICE:
             self.tx_read_regs()
 
+        self.__logger.write(LogType.DEFAULT, "Registers saved to file {}, for device {}".format(file_name, device))
+
     def save_regs(self, tb: QtWidgets.QTableWidget, file_name: str):
         file_name, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Save registers content", file_name,
                                                              "Text files (*.txt)")
@@ -442,3 +484,5 @@ class MainWindow(QtWidgets.QMainWindow):
 
                     outfile.write("\"" + reg_index + "\",")
                     outfile.write("\"" + reg_value + "\"\n")
+
+                self.__logger.write(LogType.DEFAULT, "Registers saved to file {}".format(file_name))

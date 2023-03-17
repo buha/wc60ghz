@@ -1,19 +1,22 @@
 import glob
 import sys
+import traceback
 
 import iio
 import serial
 from PySide6.QtSerialPort import QSerialPortInfo
 from iio import Context
 
+from logger import *
 from resouces import TEST_DEVICE, TEST_ATTR
 
 
 class Controller:
     __iio_ctx = None
 
-    def __init__(self) -> None:
+    def __init__(self, logger: Logger) -> None:
         self.__iio_ctx: Context()
+        self.__logger = logger
         self.__ctx_config = ""
 
     @staticmethod
@@ -41,8 +44,7 @@ class Controller:
         else:
             return "(above +45 °C)"
 
-    @staticmethod
-    def __get_serial_ports() -> list[str]:
+    def __get_serial_ports(self) -> list[str]:
         platform = sys.platform
         if platform.startswith("win"):
             ports = ['COM%s' % (i + 1) for i in range(256)]
@@ -58,9 +60,11 @@ class Controller:
                 s.close()
                 result.append(port)
             except (OSError, serial.SerialException):
-                pass
+                self.__logger.write(LogType.ERROR, traceback.format_exc())
         return result
 
+    def get_uri(self):
+        return str(self.__ctx_config)
     @staticmethod
     def get_ports() -> list:
         return [port.portName() for port in QSerialPortInfo.availablePorts()]
@@ -77,61 +81,48 @@ class Controller:
         return True, ""
 
     def remove_ctx(self):
-        print(" ----  try to DELETE CTX")
         if self.__iio_ctx is not None:
-            print(" ----  DELETED CTX")
             del self.__iio_ctx
             self.__iio_ctx = None
+
+            self.__logger.write(LogType.IIO_DEVICE, "Closed context: {}".format(self.__ctx_config))
             self.__ctx_config = ""
 
-    def get_device_attrs(self, device: str) -> {}:
+    def __safe_exec(self, func):
         try:
-            return self.__iio_ctx.find_device(device).attrs
+            return func()
         except:
+            self.__logger.write(LogType.ERROR, traceback.format_exc())
             if not self.valid_ctx()[0]:
                 self.remove_ctx()
+
+    def get_device_attrs(self, device: str) -> {}:
+        return self.__safe_exec(lambda: self.__iio_ctx.find_device(device).attrs)
 
     def get_device_ch_attr(self, device: str, ch: str, attr: str) -> iio.ChannelAttr:
-        try:
-            return self.__iio_ctx.find_device(device).find_channel(ch).attrs.get(attr)
-        except:
-            if not self.valid_ctx()[0]:
-                self.remove_ctx()
+        return self.__safe_exec(lambda: self.__iio_ctx.find_device(device).find_channel(ch).attrs.get(attr))
 
     def reg_write(self, device: str, reg: int, value: int):
-        try:
-            self.__iio_ctx.find_device(device).reg_write(reg, value)
-        except:
-            if not self.valid_ctx()[0]:
-                self.remove_ctx()
+        self.__safe_exec(lambda: self.__iio_ctx.find_device(device).reg_write(reg, value))
+        self.__logger.write(LogType.IIO_DEVICE, "Write: device {}; reg {}; value {}".format(device, reg, value))
 
-    def set_device_attr(self, device: str, reg: str, value: str):
+    def set_device_attr(self, device: str, attr: str, value: str):
+        attribute = self.__safe_exec(lambda: self.get_device_attrs(device).get(attr))
+
         try:
-            self.get_device_attrs(device).get(reg).value = value
+            attribute.value = value
         except:
-            if not self.valid_ctx()[0]:
-                self.remove_ctx()
+            self.__logger.write(LogType.ERROR, traceback.format_exc())
+        self.__logger.write(LogType.IIO_DEVICE, "Write: device {}; attribute {}; value {}".format(device, attr, value))
 
     def reg_read(self, device: str, i: int) -> int:
-        try:
-            return self.__iio_ctx.find_device(device).reg_read(i)
-        except:
-            if not self.valid_ctx()[0]:
-                self.remove_ctx()
+        return self.__safe_exec(lambda: self.__iio_ctx.find_device(device).reg_read(i))
 
     def get_all_attrs(self) -> {}:
-        try:
-            return self.__iio_ctx.attrs
-        except:
-            if not self.valid_ctx()[0]:
-                self.remove_ctx()
+        return self.__safe_exec(lambda: self.__iio_ctx.attrs)
 
     def get_desc(self) -> str:
-        try:
-            return self.__iio_ctx.description
-        except:
-            if not self.valid_ctx()[0]:
-                self.remove_ctx()
+        return self.__safe_exec(lambda: self.__iio_ctx.description)
 
     @staticmethod
     def make_ctx_string(text: str) -> str:
@@ -149,22 +140,27 @@ class Controller:
         return freqs
 
     def write_to_iio(self, device: str, attr: str, value: str):
+        self.__logger.write(LogType.UI, "Set device {}, attr {}, to {}".format(device, attr, value))
+
         try:
             if self.__iio_ctx is None or value is None or self.__iio_ctx.find_device(device).attrs.get(attr) is None:
-                print("fail", attr, self.__iio_ctx, value, self.__iio_ctx.find_device(device).attrs)
-                return
+                raise OSError("Failed to write: device {}; attribute {}; value {}".format(device, attr, value))
 
             if self.__iio_ctx.find_device(device).attrs.get(attr).value != str(value):
                 self.__iio_ctx.find_device(device).attrs.get(attr).value = str(value)
-                print("write", attr)
-            else:
-                print("no change", attr)
+                self.__logger.write(LogType.IIO_DEVICE, "Write: device {}; attribute {}; value {}"
+                                    .format(device, attr, value))
+
         except:
+            self.__logger.write(LogType.ERROR, traceback.format_exc())
             if not self.valid_ctx()[0]:
                 self.remove_ctx()
 
     def connect_to_ctx(self, ctx_config: str) -> bool:
         self.__iio_ctx = iio.Context(ctx_config)
         self.__ctx_config = ctx_config
+
+        self.__logger.write(LogType.IIO_DEVICE, "Connect to context: {} ".format(self.__ctx_config) +
+                                                "Successful" if self.__iio_ctx is not None else "Failed")
 
         return self.__iio_ctx is not None

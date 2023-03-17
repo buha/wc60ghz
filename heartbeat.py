@@ -12,6 +12,5 @@ class Heartbeat(QThread):
 
     def run(self):
         while True:
-            print("Thread " + self.str_id)
             self.pulse.emit()
             time.sleep(self.seconds)
