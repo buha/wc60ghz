@@ -1,0 +1,10 @@
+install python 3.10 and pip
+
+run "pip install PyQt6 PySide6 pyserial pylibiio pyinstaller"
+
+run "pyinstaller install.spec"
+
+open the new "dist" folder and make an archive called "wethlink.zip" containing the "wethlink" folder
+
+install NSIS, open it and install based on "wethlink.zip"
+

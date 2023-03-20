@@ -16,7 +16,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.__logger = logger
 
         # Load Qt ui
-        self.ui = uic.loadUi("design.ui", self)
+        self.ui = uic.loadUi("ui/design.ui", self)
 
         # init threads
         self.__ui_thread = Heartbeat("ui", 2)
@@ -453,7 +453,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.rx_read_regs()
 
     def load_regs(self, device: str):
-        file_name, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Open registers file", "Text files (*.txt)")
+        file_name, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Open registers file",
+                                                             "./resources",
+                                                             "Text files (*.txt)")
         if file_name == "":
             return
 
@@ -472,7 +474,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.__logger.write(LogType.DEFAULT, "Registers saved to file {}, for device {}".format(file_name, device))
 
     def save_regs(self, tb: QtWidgets.QTableWidget, file_name: str):
-        file_name, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Save registers content", file_name,
+        file_name, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Save registers content",
+                                                             "./resources/" + file_name,
                                                              "Text files (*.txt)")
 
         if file_name != "":

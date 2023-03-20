@@ -17,7 +17,7 @@ class Logger:
 
     @staticmethod
     def __get_name(default_name: str) -> str:
-        return default_name + ".txt"
+        return "logs/" + default_name + ".txt"
 
     @staticmethod
     def __make_log_info(log_type: LogType) -> str:
